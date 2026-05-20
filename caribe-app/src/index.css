@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: "Fraunces", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #f7f3ec;
+  --color-paper-dim: #efe9df;
+  --color-ink: #1a1a1a;
+  --color-ink-soft: #4a4a4a;
+  --color-ink-mute: #8a8378;
+  --color-rule: #d8cfc1;
+  --color-teal: #0d7377;
+  --color-teal-dim: #2d9a9e;
+  --color-coral: #e76f51;
+  --color-coral-dim: #f4a896;
+  --color-sand: #e9dcc6;
+  --color-deep: #0a3a3d;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Custom selection */
+::selection {
+  background: var(--color-coral);
+  color: var(--color-paper);
+}
+
+/* Hide scrollbars but keep scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Numeric tabular */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Decorative drop cap */
+.drop-cap::first-letter {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 4.5rem;
+  line-height: 0.85;
+  float: left;
+  padding: 0.4rem 0.6rem 0 0;
+  color: var(--color-coral);
+}
+
+/* Subtle grain background */
+.grain {
+  position: relative;
+}
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  mix-blend-mode: multiply;
+  background-image:
+    radial-gradient(circle at 25% 25%, #000 1px, transparent 1.2px),
+    radial-gradient(circle at 75% 75%, #000 1px, transparent 1.2px);
+  background-size: 3px 3px, 5px 5px;
+}
