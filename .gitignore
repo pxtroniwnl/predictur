@@ -26,5 +26,11 @@ notebooks/.ipynb_checkpoints/
 .vscode/
 .idea/
 
+# caribe-app runtime / tunnel artefacts
+caribe-app/cf_pid.txt
+caribe-app/cf_tunnel.log
+caribe-app/cf2.log
+caribe-app/serve.log
+
 # Reports — generated artefacts (optional: remove if you want to track them)
 # reports/
