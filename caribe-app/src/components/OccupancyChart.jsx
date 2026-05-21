@@ -16,7 +16,9 @@ import { parseDate, fmtMonth, fmtPct, fmtSigned } from "../lib/format";
  *   highlight: [startISO, endISO], // banda destacada
  *   annotations: [{ date, label, dy?, dx?, value? }],
  *   refLines: [{ y, label }],
- *   tone: "calm" | "alarm" | "rebound" | "steady",
+ *   tone: "calm" | "alarm" | "rebound" | "steady" | "future",
+ *   forecast: [{date, yhat, yhat_lower_80, yhat_upper_80, yhat_lower_95, yhat_upper_95}]
+ *     // si está presente, se dibuja la proyección (línea punteada + banda 95%)
  * }
  */
 export default function OccupancyChart({ data, scene, width = 720, height = 460 }) {
@@ -38,16 +40,35 @@ export default function OccupancyChart({ data, scene, width = 720, height = 460 
     return rows.filter((d) => d._date >= a && d._date <= b);
   }, [data, scene?.range, metric]);
 
-  const xDomain = extent(visible, (d) => d._date);
+  const xDomain = useMemo(() => {
+    const baseDomain = extent(visible, (d) => d._date);
+    if (!scene?.forecast || metric !== "occ" || !baseDomain[1]) return baseDomain;
+    const fcDates = scene.forecast.map((d) => parseDate(d.date));
+    const fcMax = fcDates.reduce(
+      (acc, d) => (d > acc ? d : acc),
+      baseDomain[1]
+    );
+    return [baseDomain[0], fcMax];
+  }, [visible, scene?.forecast, metric]);
   // Para income (puede ser muy grande positivo), recortamos el eje a percentil para no aplastar
   const yDomain = useMemo(() => {
-    if (metric === "occ") return [0, 70];
+    if (metric === "occ") {
+      // Si hay pronóstico, ampliar para acomodar el IC95
+      if (scene?.forecast) {
+        const upper = Math.max(
+          70,
+          ...scene.forecast.map((d) => d.yhat_upper_95 ?? 0)
+        );
+        return [0, Math.min(100, Math.ceil(upper / 10) * 10)];
+      }
+      return [0, 70];
+    }
     const vals = visible.map(yAccessor);
     const lo = Math.min(-100, Math.min(...vals));
     const hi = Math.max(100, Math.max(...vals));
     // recortar a un máximo razonable
     return [Math.max(lo, -120), Math.min(hi, 1600)];
-  }, [visible, metric]);
+  }, [visible, metric, scene?.forecast]);
 
   const x = scaleTime().domain(xDomain).range([0, innerW]);
   const y = scaleLinear().domain(yDomain).nice().range([innerH, 0]);
@@ -96,13 +117,60 @@ export default function OccupancyChart({ data, scene, width = 720, height = 460 
     alarm: "#e76f51",
     rebound: "#c47b3a",
     steady: "#0d7377",
+    future: "#0d7377",
   }[tone];
   const areaColor = {
     calm: "#0d737715",
     alarm: "#e76f5120",
     rebound: "#c47b3a18",
     steady: "#0d737712",
+    future: "#0d737712",
   }[tone];
+  const forecastColor = "#1a6dad";  // distinct blue for projections
+
+  // Forecast geometry (only if scene.forecast is provided and metric is occ)
+  const forecastViz = useMemo(() => {
+    if (!scene?.forecast || metric !== "occ") return null;
+    const fcRows = scene.forecast
+      .map((d) => ({ ...d, _date: parseDate(d.date) }))
+      .filter((d) => d.yhat != null);
+    if (fcRows.length === 0) return null;
+
+    // Connect last historical point to the first forecast point so the line
+    // visually flows. Uses the last visible history row.
+    const lastHist = visible[visible.length - 1];
+    const connector = lastHist
+      ? [{ _date: lastHist._date, yhat: lastHist[metric], yhat_lower_80: lastHist[metric],
+           yhat_upper_80: lastHist[metric], yhat_lower_95: lastHist[metric],
+           yhat_upper_95: lastHist[metric] }]
+      : [];
+    const series = [...connector, ...fcRows];
+
+    const lineFc = d3line()
+      .x((d) => x(d._date))
+      .y((d) => y(d.yhat))
+      .curve(curveMonotoneX);
+
+    const band95 = d3area()
+      .x((d) => x(d._date))
+      .y0((d) => y(d.yhat_lower_95))
+      .y1((d) => y(d.yhat_upper_95))
+      .curve(curveMonotoneX);
+
+    const band80 = d3area()
+      .x((d) => x(d._date))
+      .y0((d) => y(d.yhat_lower_80))
+      .y1((d) => y(d.yhat_upper_80))
+      .curve(curveMonotoneX);
+
+    return {
+      linePath: lineFc(series),
+      band95Path: band95(series),
+      band80Path: band80(series),
+      startDate: fcRows[0]._date,
+      points: fcRows,
+    };
+  }, [scene?.forecast, visible, metric, x, y]);
 
   // Animación del path: hacemos draw on enter usando key=scene.id
   return (
@@ -215,6 +283,66 @@ export default function OccupancyChart({ data, scene, width = 720, height = 460 
             animate={{ pathLength: 1, opacity: 1 }}
             transition={{ duration: 1.2, ease: "easeInOut" }}
           />
+
+          {/* Forecast: confidence bands + dashed projection line */}
+          {forecastViz && (
+            <motion.g
+              key={scene?.id + "-forecast"}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.8, delay: 0.3 }}
+            >
+              {/* Vertical separator: today */}
+              <line
+                x1={x(forecastViz.startDate)}
+                x2={x(forecastViz.startDate)}
+                y1={0}
+                y2={innerH}
+                stroke="#1a1a1a"
+                strokeWidth={0.6}
+                strokeDasharray="3,4"
+                opacity={0.5}
+              />
+              <text
+                x={x(forecastViz.startDate) + 4}
+                y={12}
+                className="fill-[#4a4a4a]"
+                style={{
+                  fontSize: 10,
+                  fontFamily: "Inter",
+                  fontWeight: 600,
+                  letterSpacing: 0.6,
+                }}
+              >
+                PRONÓSTICO →
+              </text>
+
+              {/* CI 95% band */}
+              <path d={forecastViz.band95Path} fill={forecastColor} fillOpacity={0.10} />
+              {/* CI 80% band (slightly more saturated) */}
+              <path d={forecastViz.band80Path} fill={forecastColor} fillOpacity={0.16} />
+              {/* Projection line (dashed) */}
+              <path
+                d={forecastViz.linePath}
+                fill="none"
+                stroke={forecastColor}
+                strokeWidth={2}
+                strokeDasharray="5,4"
+                strokeLinecap="round"
+              />
+              {/* End point marker */}
+              {forecastViz.points.length > 0 && (
+                <circle
+                  cx={x(forecastViz.points[forecastViz.points.length - 1]._date)}
+                  cy={y(forecastViz.points[forecastViz.points.length - 1].yhat)}
+                  r={4}
+                  fill={forecastColor}
+                  stroke="#f7f3ec"
+                  strokeWidth={2}
+                />
+              )}
+            </motion.g>
+          )}
 
           {/* Annotations */}
           <AnimatePresence mode="popLayout">
