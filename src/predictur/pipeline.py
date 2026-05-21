@@ -16,6 +16,7 @@ from .features import build_exog
 from .evaluation import cross_validate, summarize_cv
 from .models import ETSForecaster, ProphetForecaster, SarimaForecaster
 from .models.ensemble import build_ensemble_predictions, inverse_mape_weights
+from .forecast import run_forecast  # noqa: F401 — re-exported for convenience
 
 REPORTS_DIR = Path("reports")
 
@@ -89,6 +90,7 @@ def run_pipeline(
 
 def main() -> None:
     run_pipeline()
+    run_forecast(horizon=12, verbose=True)
 
 
 if __name__ == "__main__":
