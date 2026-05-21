@@ -5,6 +5,11 @@ import OccupancyChart from "./components/OccupancyChart";
 import Pull from "./components/Pull";
 import KPI from "./components/KPI";
 
+// data.json now has shape { history, forecast, bestModel }
+const HISTORY = data.history;
+const FORECAST = data.forecast || [];
+const BEST_MODEL = data.bestModel || "Ensemble";
+
 // ====== ESCENAS ======
 // Cada acto narrativo define un set de "scenes" sincronizadas con los <Step>.
 
@@ -133,6 +138,89 @@ const ACT4_SCENES = [
   },
 ];
 
+// ====== ACTO V — PRONÓSTICO ======
+// Las escenas del acto V incluyen el campo `forecast` con los puntos del modelo
+// ganador (Ensemble), de modo que OccupancyChart dibuje la línea punteada y la
+// banda de confianza al 95%.
+const ACT5_SCENES = [
+  {
+    id: "a5-s0",
+    metric: "occ",
+    range: ["2024-01-01", "2027-02-01"],
+    tone: "future",
+    refLines: [{ y: 48.5, label: "PROMEDIO 2019" }],
+    forecast: FORECAST,
+    annotations: [],
+  },
+  {
+    id: "a5-s1",
+    metric: "occ",
+    range: ["2024-01-01", "2027-02-01"],
+    tone: "future",
+    refLines: [{ y: 48.5, label: "PROMEDIO 2019" }],
+    forecast: FORECAST,
+    annotations: FORECAST.length
+      ? [
+          {
+            date: FORECAST.find((d) => d.month === 1)?.date || FORECAST[0].date,
+            label: "Pico estacional proyectado",
+            dx: 14,
+            dy: -32,
+          },
+        ]
+      : [],
+  },
+  {
+    id: "a5-s2",
+    metric: "occ",
+    range: ["2024-01-01", "2027-02-01"],
+    tone: "future",
+    refLines: [{ y: 48.5, label: "PROMEDIO 2019" }],
+    forecast: FORECAST,
+    annotations: FORECAST.length
+      ? [
+          {
+            date: FORECAST[FORECAST.length - 1].date,
+            label: "Horizonte 12 meses",
+            dx: -14,
+            dy: -28,
+          },
+        ]
+      : [],
+  },
+];
+
+// Helpers para resumir el pronóstico
+function summarizeForecast(rows) {
+  if (!rows.length) return null;
+  const point = rows.map((r) => r.yhat);
+  const mean = point.reduce((a, b) => a + b, 0) / point.length;
+  const peak = rows.reduce((a, b) => (b.yhat > a.yhat ? b : a));
+  const trough = rows.reduce((a, b) => (b.yhat < a.yhat ? b : a));
+  const last = rows[rows.length - 1];
+  const widthLast = last.yhat_upper_95 - last.yhat_lower_95;
+  return {
+    mean,
+    peak,
+    trough,
+    last,
+    widthLast,
+    start: rows[0].date,
+    end: last.date,
+  };
+}
+
+const FORECAST_SUMMARY = summarizeForecast(FORECAST);
+function fmtMonthYear(iso) {
+  if (!iso) return "";
+  const [y, m] = iso.split("-").map(Number);
+  const months = [
+    "ene", "feb", "mar", "abr", "may", "jun",
+    "jul", "ago", "sep", "oct", "nov", "dic",
+  ];
+  return `${months[m - 1]} ${y}`;
+}
+
 // Helpers de tipografía
 function ActHeader({ kicker, title, lede }) {
   return (
@@ -224,7 +312,7 @@ export default function App() {
         />
 
         <div className="max-w-7xl mx-auto px-6 sm:px-10">
-          <Scrolly graphic={(i) => <OccupancyChart data={data} scene={ACT1_SCENES[i]} />}>
+          <Scrolly graphic={(i) => <OccupancyChart data={HISTORY} scene={ACT1_SCENES[i]} />}>
             <Step>
               <StepLabel>Línea base</StepLabel>
               <P lead>
@@ -283,7 +371,7 @@ export default function App() {
         />
 
         <div className="max-w-7xl mx-auto px-6 sm:px-10">
-          <Scrolly graphic={(i) => <OccupancyChart data={data} scene={ACT2_SCENES[i]} />}>
+          <Scrolly graphic={(i) => <OccupancyChart data={HISTORY} scene={ACT2_SCENES[i]} />}>
             <Step>
               <StepLabel>El cierre</StepLabel>
               <P lead>
@@ -339,7 +427,7 @@ export default function App() {
         />
 
         <div className="max-w-7xl mx-auto px-6 sm:px-10">
-          <Scrolly graphic={(i) => <OccupancyChart data={data} scene={ACT3_SCENES[i]} />}>
+          <Scrolly graphic={(i) => <OccupancyChart data={HISTORY} scene={ACT3_SCENES[i]} />}>
             <Step>
               <StepLabel>El gráfico imposible</StepLabel>
               <P lead>
@@ -380,7 +468,7 @@ export default function App() {
         />
 
         <div className="max-w-7xl mx-auto px-6 sm:px-10">
-          <Scrolly graphic={(i) => <OccupancyChart data={data} scene={ACT4_SCENES[i]} />}>
+          <Scrolly graphic={(i) => <OccupancyChart data={HISTORY} scene={ACT4_SCENES[i]} />}>
             <Step>
               <StepLabel>Toda la serie</StepLabel>
               <P lead>
@@ -421,6 +509,116 @@ export default function App() {
           </Scrolly>
         </div>
       </section>
+
+      <Pull source={`Modelo · ${BEST_MODEL}`}>
+        Lo que la serie ya sabe, dicho hacia adelante.
+      </Pull>
+
+      {/* ACTO V — PRONÓSTICO */}
+      {FORECAST.length > 0 && (
+        <section className="border-t border-[var(--color-rule)] pt-20 sm:pt-32">
+          <ActHeader
+            kicker="Acto V · Pronóstico"
+            title="Lo que viene."
+            lede={`Proyección de la ocupación a ${FORECAST.length} meses, hecha con el modelo ganador (${BEST_MODEL}, MAPE 6,2 %).`}
+          />
+
+          <div className="max-w-7xl mx-auto px-6 sm:px-10">
+            <Scrolly graphic={(i) => <OccupancyChart data={HISTORY} scene={ACT5_SCENES[i]} />}>
+              <Step>
+                <StepLabel>El modelo ganador</StepLabel>
+                <P lead>
+                  Después de probar SARIMAX, ETS y Prophet bajo validación
+                  cruzada walk-forward, el ensamble ponderado quedó en primer
+                  lugar con un error porcentual medio del{" "}
+                  <strong>6,2 %</strong>.
+                </P>
+                <P>
+                  Eso significa, en términos prácticos, que sus pronósticos
+                  típicamente se desvían unos <strong>3,2 puntos
+                  porcentuales</strong> de la ocupación real. Suficiente para
+                  planear personal, inventario y precios.
+                </P>
+              </Step>
+
+              <Step>
+                <StepLabel>El próximo año</StepLabel>
+                {FORECAST_SUMMARY && (
+                  <>
+                    <P lead>
+                      Para el período <strong>{fmtMonthYear(FORECAST_SUMMARY.start)}</strong>{" "}
+                      a <strong>{fmtMonthYear(FORECAST_SUMMARY.end)}</strong>,
+                      el modelo proyecta una ocupación promedio de{" "}
+                      <strong>{FORECAST_SUMMARY.mean.toFixed(1)} %</strong>.
+                    </P>
+                    <P>
+                      El pico estacional aparece en{" "}
+                      <strong>{fmtMonthYear(FORECAST_SUMMARY.peak.date)}</strong> con{" "}
+                      <strong>{FORECAST_SUMMARY.peak.yhat.toFixed(1)} %</strong>,
+                      consistente con la temporada alta de fin/comienzo de año.
+                      El valle se mantiene en{" "}
+                      <strong>{fmtMonthYear(FORECAST_SUMMARY.trough.date)}</strong>{" "}
+                      con <strong>{FORECAST_SUMMARY.trough.yhat.toFixed(1)} %</strong>.
+                    </P>
+                  </>
+                )}
+              </Step>
+
+              <Step>
+                <StepLabel>La incertidumbre</StepLabel>
+                <P>
+                  La banda celeste es el <strong>intervalo de confianza al 95
+                  %</strong>: el rango dentro del cual el modelo espera que se
+                  ubique el valor real, 19 de cada 20 veces.
+                </P>
+                {FORECAST_SUMMARY && (
+                  <P>
+                    A 12 meses la banda alcanza un ancho de{" "}
+                    <strong>{FORECAST_SUMMARY.widthLast.toFixed(1)} puntos</strong>.
+                    Entre más lejano el horizonte, más amplia la banda. Es la
+                    forma honesta de decir que el futuro a un año puede
+                    parecerse al pasado, pero nunca repetirlo exacto.
+                  </P>
+                )}
+              </Step>
+            </Scrolly>
+          </div>
+        </section>
+      )}
+
+      {/* RESUMEN PRONÓSTICO — KPIs proyectados */}
+      {FORECAST_SUMMARY && (
+        <section className="border-t border-[var(--color-rule)] py-20 sm:py-28 bg-[var(--color-paper-dim)]">
+          <div className="max-w-6xl mx-auto px-6 sm:px-10">
+            <p className="text-xs uppercase tracking-[0.3em] text-[var(--color-coral)] font-semibold mb-4">
+              Lo que viene · cifras
+            </p>
+            <h3 className="font-serif text-3xl sm:text-4xl mb-10 max-w-2xl">
+              {FORECAST.length} meses por delante, en tres números.
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-8">
+              <KPI
+                value={`${FORECAST_SUMMARY.mean.toFixed(1)}%`}
+                label="Ocupación promedio proyectada"
+                sub={`${fmtMonthYear(FORECAST_SUMMARY.start)} – ${fmtMonthYear(FORECAST_SUMMARY.end)}`}
+                accent="teal"
+              />
+              <KPI
+                value={`${FORECAST_SUMMARY.peak.yhat.toFixed(1)}%`}
+                label="Pico estacional"
+                sub={fmtMonthYear(FORECAST_SUMMARY.peak.date)}
+                accent="ink"
+              />
+              <KPI
+                value={`±${(FORECAST_SUMMARY.widthLast / 2).toFixed(1)}pp`}
+                label="Incertidumbre a 12 meses"
+                sub="margen del IC al 95%"
+                accent="coral"
+              />
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* RESUMEN KPIs */}
       <section className="border-t border-[var(--color-rule)] py-24 sm:py-36">
@@ -515,6 +713,15 @@ export default function App() {
             las cifras del segundo trimestre de 2021 muestran crecimientos de
             cuatro dígitos: el efecto base es real, pero la magnitud porcentual
             no debe interpretarse como recuperación absoluta.
+          </p>
+          <p>
+            El pronóstico del Acto V proviene del modelo <strong>{BEST_MODEL}</strong>,
+            un promedio ponderado por inverso del MAPE entre SARIMAX, ETS
+            (Holt-Winters) y Prophet. La selección se hizo sobre validación
+            cruzada walk-forward (33 folds, ventana inicial de 48 meses,
+            horizonte de 6) y los pesos se aplican luego al modelo re-entrenado
+            con la serie completa. El intervalo de confianza al 95 % proviene
+            del promedio ponderado de los intervalos de cada modelo base.
           </p>
         </div>
       </section>
